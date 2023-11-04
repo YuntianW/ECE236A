@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.metrics import normalized_mutual_info_score, accuracy_score
 ### TODO: import any other packages you need for your solution
+from cvxopt import matrix, solvers
 
 #--- Task 1 ---#
 class MyClassifier:  
@@ -39,25 +40,79 @@ class MyClassifier:
 ##########################################################################
 #--- Task 2 ---#
 class MyClustering:
-    def __init__(self, K):
+    def __init__(self, K, beta=0.1, sigma=0.1):
         self.K = K  # number of classes
         self.labels = None
 
-        ### TODO: Initialize other parameters needed in your algorithm
-        # examples: 
-        # self.cluster_centers_ = None
+        # Sparse L1-Sparse Nonnegative Matrix Factorization
+        # min |A-WH|_1 + beta*|H|_1 + sigma*|W|_infty
+        self.beta = beta
+        self.sigma = sigma
+        self.W = None
+        self.H = None
+        self.loss = None
         
     
-    def train(self, trainX):
+    def train(self, trainX, verbose=False):
         ''' Task 2-2 
             TODO: cluster trainX using LP(s) and store the parameters that discribe the identified clusters
         '''
 
+        # intialize W and H
+        A = trainX.T
+        m, n = A.shape
+        K = self.K
+        W = np.random.rand(m, self.K)
+        H = np.random.rand(self.K, n)
 
-        # Update and teturn the cluster labels of the training data (trainX)
+        # update W and H
+        def update_H():
+            new_H = np.zeros_like(H)
+
+            c = matrix(np.concateate((self.beta * np.ones(K), np.ones(m))))
+            A = matrix(np.block([
+                    [-np.identity(K), np.zeros((K, m))],
+                    [W, -np.identity(m)],
+                    [W, -np.identity(m)]
+                ]))
+            for i in range(n):
+                b = matrix(np.concatenate((np.zeros(self.K), -A[:, i], A[:, i])))
+                sol = solvers.lp(c, A, b)
+                new_H[:, i] = np.array(sol['x'])[:self.K]
+            return new_H
+
+        def update_W():
+            new_W = np.zeros_like(W)
+
+            c = matrix(np.concatenate((np.zeros(K), np.ones(n), self.gamma)))
+            A = matrix(np.block([
+                    [-H.T, -np.identity(n), -np.zeros((n, 1))],
+                    [H.T, -np.identity(n), -np.zeros((n, 1))],
+                    [np.identity(K), np.zeros((K, n)), -np.ones((K, 1))],
+                    [-np.identity(K), np.zeros((K, n)), np.zeros((K, 1))]
+                ]))
+            for i in range(m):
+                b = matrix(np.concatenate((-A[i, :], A[i, :], np.zeros(K), np.zeros(K))))
+                sol = solvers.lp(c, A, b)
+                new_W[i, :] = np.array(sol['x'])[:K]
+            return new_W
+
+        # update W and H iteratively
+        for _ in range(100):
+            H = update_H()
+            W = update_W()
+            self.loss = np.sum(np.abs(A - W @ H))
+            if verbose:
+                print('loss: ', self.loss)
+
+        # Update and return the cluster labels of the training data (trainX)
+        self.W = W
+        self.H = H
+        self.labels = np.argmax(H, axis=0)
+
         return self.labels
-    
-    
+
+
     def infer_cluster(self, testX):
         ''' Task 2-2 
             TODO: assign new data points to the existing clusters
