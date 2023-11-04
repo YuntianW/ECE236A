@@ -2,40 +2,79 @@ import numpy as np
 from sklearn.metrics import normalized_mutual_info_score, accuracy_score
 ### TODO: import any other packages you need for your solution
 from cvxopt import matrix, solvers
+from scipy.optimize import linprog
 
 #--- Task 1 ---#
-class MyClassifier:  
-    def __init__(self, K):
-        self.K = K  # number of classes
+class MyClassifier:
+    def __init__(self, K, epsilon=0.1):
+        self.K = K 
+        self.epsilon = epsilon
+        self.solution = None
+        self.matrix = None
 
-        ### TODO: Initialize other parameters needed in your algorithm
-        # examples:
-        # self.w = None
-        # self.b = None
+    def train_two_class(self, class_1, class_2):
+        data_0, data_1 = (class_1, class_2) if np.mean(class_1[:, 1]) > np.mean(class_2[:, 1]) else (class_2, class_1)
 
-    
-    def train(self, trainX):
-        ''' Task 1-2 
-            TODO: train classifier using LP(s) and updated parameters needed in your algorithm 
-        '''
+        A = np.zeros((2 * (len(data_0) + len(data_1)), 2 + len(data_0) + len(data_1)))
+        b = np.zeros((2 * (len(data_0) + len(data_1)), 1))
+
+        A[:len(data_0), 0] = data_0[:, 0]
+        A[:len(data_0), 1] = 1
+        b[:len(data_0),0] = data_0[:, 1] - self.epsilon
+
+        A[len(data_0):len(data_0) + len(data_1), 0] = -data_1[:, 0]
+        A[len(data_0):len(data_0) + len(data_1), 1] = -1
+        b[len(data_0):len(data_0) + len(data_1),0] = -data_1[:, 1] - self.epsilon
         
-    
+        A[:len(data_0) + len(data_1), 2:] = -np.eye(len(data_0) + len(data_1))
+        A[len(data_0) + len(data_1):, 2:] = -np.eye(len(data_0) + len(data_1))
+
+        c = np.ones(len(data_0) + len(data_1) + 2)
+        c[:2] = 0 
+        res = linprog(c=c, A_ub=A, b_ub=b)
+        sol = res.x[:2]
+        return sol
+
+    def train_all_classes(self, data_class):
+        num_combinations = self.K * (self.K - 1) // 2
+        sol = np.zeros((num_combinations, 2))
+        matrix = np.zeros((self.K, num_combinations))
+        count = 0
+
+        for i in range(self.K):
+            for j in range(i + 1, self.K):
+                sol_temp = self.train_two_class(data_class[i], data_class[j])
+                sol[count] = sol_temp
+
+                matrix[i, count] = 1 if np.mean(data_class[i][:, 1]) > np.mean(data_class[j][:, 1]) else -1
+                matrix[j, count] = 1 if np.mean(data_class[i][:, 1]) < np.mean(data_class[j][:, 1]) else -1
+                count += 1
+
+        return sol, matrix
+
+    def train(self, data):
+        index_class = [np.where(data['trainY'] == k)[0] for k in range(self.K)]
+        data_class = [data['trainX'][indices] for indices in index_class]
+        self.solution, self.matrix = self.train_all_classes(data_class)
+
     def predict(self, testX):
-        ''' Task 1-2 
-            TODO: predict the class labels of input data (testX) using the trained classifier
-        '''
-
-
-        # Return the predicted class labels of the input data (testX)
-        return predY
-    
+        result = np.zeros(len(testX))
+        for i in range(len(testX)):
+            class_temp = np.zeros(self.K)
+            for j in range(self.K):
+                temp = True
+                for k in range(len(self.solution)):
+                    if self.matrix[j, k] != 0:
+                        temp = temp and ((testX[i, 1] - (testX[i, 0] * self.solution[k, 0] + self.solution[k, 1])) * self.matrix[j, k] > 0)
+                if temp:
+                    class_temp[j] = 1
+            result[i] = np.argmax(class_temp)
+        return result
 
     def evaluate(self, testX, testY):
         predY = self.predict(testX)
         accuracy = accuracy_score(testY, predY)
-
         return accuracy
-    
 
 ##########################################################################
 #--- Task 2 ---#
