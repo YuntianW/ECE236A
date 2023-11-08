@@ -1,7 +1,8 @@
 import numpy as np
 from sklearn.metrics import normalized_mutual_info_score, accuracy_score
 ### TODO: import any other packages you need for your solution
-from scipy.optimize import linprog
+from scipy.optimize import linprog, milp, LinearConstraint
+from tqdm import tqdm
 
 #--- Task 1 ---#
 class MyClassifier:
@@ -82,10 +83,8 @@ class MyClustering:
         self.K = K  # number of classes
         self.labels = None
 
-        # Sparse L1-Sparse Nonnegative Matrix Factorization
-        # min |A-WH|_1 + beta*|H|_1 + sigma*|W|_infty
-        self.beta = beta
-        self.sigma = sigma
+        # Sparse Nonnegative Matrix Factorization
+        # min |A-WH|_1
         self.W = None
         self.H = None
         self.loss = None
@@ -99,49 +98,66 @@ class MyClustering:
         # intialize W and H
         X = trainX.T
         m, n = X.shape
-        K = self.K
-        W = np.random.rand(m, self.K)
+        W = X[:, np.random.choice(n, self.K, replace=False)]
         H = np.random.rand(self.K, n)
 
         # update W and H
         def update_H():
             new_H = np.zeros_like(H)
-
-            c = np.concatenate((self.beta * np.ones(K), np.ones(m)))
-            A = np.block([
-                    [-np.identity(K), np.zeros((K, m))],
-                    [W, -np.identity(m)],
-                    [W, -np.identity(m)]
-                ])
+            c = np.concatenate((np.zeros(self.K), np.ones(m)))  # 0^T h + 1^T t
             for i in range(n):
-                b = np.concatenate((np.zeros(K), -X[:, i], X[:, i]))
-                sol = lp(c, A, b)
-                new_H[:, i] = sol['x'][:K]
+                # print(m, n)
+                constraints = [
+                    LinearConstraint(np.block([-W, np.identity(m)]), -X[:, i]),   # -X_i <= -Wh + t
+                    LinearConstraint(np.block([W, np.identity(m)]), X[:, i]),  # X_i <= Wh + t
+                    LinearConstraint(np.block([np.ones((1, self.K)), np.zeros((1, m))]), 1, 1),  # 1^Th = 1
+                    LinearConstraint(np.block([np.identity(self.K), np.zeros((self.K, m))]), np.zeros(self.K))  # h >= 0
+                ]
+                integrality = np.concatenate((np.zeros(self.K), np.ones(m)))
+                sol = milp(c=c, integrality=integrality, constraints=constraints)
+                new_H[:, i] = sol['x'][:self.K]
+
             return new_H
 
-        def update_W():
-            new_W = np.zeros_like(W)
+        # def update_W():
+        #     new_W = np.zeros_like(W)
+        #     c = np.concatenate((np.zeros(m), np.ones(n)))
+        #     for i in range(m):
+        #         constraints = [
+        #             LinearConstraint(np.block([-H.T, np.identity(n)]), -X[i, :]),  # -X_i <= -Hw + t
+        #             LinearConstraint(np.block([H.T, np.identity(n)]), X[i, :]),  # X_i <= Hw + t
+        #             LinearConstraint(np.block([np.identity(n), np.zeros((n, m))]), np.zeros(n))  # w >= 0
+        #         ]
+        #         sol = milp(c=c, constraints=constraints)
+        #         new_W[i] = sol['x'][:self.K]
+        #     return new_W
 
-            c = np.concatenate((np.zeros(K), np.ones(n), self.sigma*np.ones(1)))
-            A = np.block([
-                    [-H.T, -np.identity(n), -np.zeros((n, 1))],
-                    [H.T, -np.identity(n), -np.zeros((n, 1))],
-                    [np.identity(K), np.zeros((K, n)), -np.ones((K, 1))],
-                    [-np.identity(K), np.zeros((K, n)), np.zeros((K, 1))]
-                ])
+        def update_W():
+            m, n = H.shape  # Assuming H has shape (m, n)
+            new_W = np.zeros_like(W)
+            c = np.concatenate((np.zeros(self.K), np.ones(n)))
+            print(X.shape)
             for i in range(m):
-                b = np.concatenate((-X[i, :], X[i, :], np.zeros(K), np.zeros(K)))
-                sol = lp(c, A, b)
-                new_W[i, :] = sol['x'][:K]
+                # print(i)
+                # print(X[:, i])
+                constraints = [
+                    LinearConstraint(np.block([-H.T, np.identity(n)]), -X[i, :], np.inf),
+                    LinearConstraint(np.block([H.T, np.identity(n)]), X[i, :], np.inf),
+                    LinearConstraint(np.block([np.identity(self.K), np.zeros((self.K, n))]), np.zeros(self.K), np.inf)
+                ]
+                
+                # Assuming milp is a function that takes an objective vector `c` and a list of constraints
+                # and returns a dictionary with the solution in 'x'
+                sol = milp(c=c, constraints=constraints)
+                # Assuming that the solution vector `x` contains the `w` values first, followed by slack variables `t`
+                new_W[i] = sol['x'][:self.K]
+            
             return new_W
 
         # update W and H iteratively
-        for _ in range(100):
+        for _ in tqdm(range(5)):
             H = update_H()
             W = update_W()
-            print(H)
-            print(W)
-            print(W@H)
             self.loss = np.sum(np.abs(X - W @ H))
             if verbose:
                 print('loss: ', self.loss)
@@ -149,7 +165,7 @@ class MyClustering:
         # Update and return the cluster labels of the training data (trainX)
         self.W = W
         self.H = H
-        self.labels = np.argmax(H, axis=0)
+        self.labels = H
 
         return self.labels
 
