@@ -79,7 +79,7 @@ class MyClassifier:
 ##########################################################################
 #--- Task 2 ---#
 class MyClustering:
-    def __init__(self, K, beta=0, sigma=0):
+    def __init__(self, K):
         self.K = K  # number of classes
         self.labels = None
 
@@ -96,76 +96,52 @@ class MyClustering:
         '''
 
         # intialize W and H
-        X = trainX.T
-        m, n = X.shape
-        W = X[:, np.random.choice(n, self.K, replace=False)]
-        H = np.random.rand(self.K, n)
+        A = trainX.T
+        W = A[:, np.random.randint(0, A.shape[1], self.K)]
+        H = np.zeros((self.K, A.shape[1]))
 
-        # update W and H
-        def update_H():
-            new_H = np.zeros_like(H)
-            c = np.concatenate((np.zeros(self.K), np.ones(m)))  # 0^T h + 1^T t
-            for i in range(n):
-                # print(m, n)
-                constraints = [
-                    LinearConstraint(np.block([-W, np.identity(m)]), -X[:, i]),   # -X_i <= -Wh + t
-                    LinearConstraint(np.block([W, np.identity(m)]), X[:, i]),  # X_i <= Wh + t
-                    LinearConstraint(np.block([np.ones((1, self.K)), np.zeros((1, m))]), 1, 1),  # 1^Th = 1
-                    LinearConstraint(np.block([np.identity(self.K), np.zeros((self.K, m))]), np.zeros(self.K))  # h >= 0
-                ]
-                integrality = np.concatenate((np.zeros(self.K), np.ones(m)))
+        def solve_l1_Ax_b(A, b, integer=True):
+            # Solve min ||Ax-b||_1
+            # s.t. x>=0, 1^Tx=1, x integer
+            m, n = A.shape
+            c = np.concatenate((np.zeros(n), np.ones(m)))
+            A_ub = np.block([
+                [-np.identity(n), np.zeros((n, m))], 
+                [A, -np.identity(m)],
+                [-A, -np.identity(m)]
+            ])
+            A_eq = np.block(
+                [np.ones((1, n)), np.zeros((1, m))]
+            )
+            b_ub = np.concatenate((np.zeros(n), b, -b))
+            b_eq = 1
+            constraints = [
+                LinearConstraint(A_ub, ub=b_ub),
+            ]
+            if integer:
+                constraints.append(LinearConstraint(A_eq, b_eq, b_eq))
+                integrality = np.concatenate((np.ones(n), np.zeros(m)))
                 sol = milp(c=c, integrality=integrality, constraints=constraints)
-                new_H[:, i] = sol['x'][:self.K]
-
-            return new_H
-
-        # def update_W():
-        #     new_W = np.zeros_like(W)
-        #     c = np.concatenate((np.zeros(m), np.ones(n)))
-        #     for i in range(m):
-        #         constraints = [
-        #             LinearConstraint(np.block([-H.T, np.identity(n)]), -X[i, :]),  # -X_i <= -Hw + t
-        #             LinearConstraint(np.block([H.T, np.identity(n)]), X[i, :]),  # X_i <= Hw + t
-        #             LinearConstraint(np.block([np.identity(n), np.zeros((n, m))]), np.zeros(n))  # w >= 0
-        #         ]
-        #         sol = milp(c=c, constraints=constraints)
-        #         new_W[i] = sol['x'][:self.K]
-        #     return new_W
-
-        def update_W():
-            m, n = H.shape  # Assuming H has shape (m, n)
-            new_W = np.zeros_like(W)
-            c = np.concatenate((np.zeros(self.K), np.ones(n)))
-            print(X.shape)
-            for i in range(m):
-                # print(i)
-                # print(X[:, i])
-                constraints = [
-                    LinearConstraint(np.block([-H.T, np.identity(n)]), -X[i, :], np.inf),
-                    LinearConstraint(np.block([H.T, np.identity(n)]), X[i, :], np.inf),
-                    LinearConstraint(np.block([np.identity(self.K), np.zeros((self.K, n))]), np.zeros(self.K), np.inf)
-                ]
-                
-                # Assuming milp is a function that takes an objective vector `c` and a list of constraints
-                # and returns a dictionary with the solution in 'x'
+            else:
                 sol = milp(c=c, constraints=constraints)
-                # Assuming that the solution vector `x` contains the `w` values first, followed by slack variables `t`
-                new_W[i] = sol['x'][:self.K]
-            
-            return new_W
+            return sol["x"][: n]
+
 
         # update W and H iteratively
         for _ in tqdm(range(5)):
-            H = update_H()
-            W = update_W()
-            self.loss = np.sum(np.abs(X - W @ H))
+            for i in range(A.shape[1]):
+                H[:, i] = solve_l1_Ax_b(W, A[:, i])
+            for i in range(A.shape[0]):
+                W[i, :] = solve_l1_Ax_b(H.T, A[i, :], integer=False)
+            self.loss = np.sum(np.abs(A-W@H)) / (A.shape[0]*A.shape[1])
             if verbose:
                 print('loss: ', self.loss)
+
 
         # Update and return the cluster labels of the training data (trainX)
         self.W = W
         self.H = H
-        self.labels = H
+        self.labels = H.argmax(axis=0)
 
         return self.labels
 
