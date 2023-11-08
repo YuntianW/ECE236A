@@ -78,19 +78,89 @@ class MyClassifier:
 
 ##########################################################################
 #--- Task 2 ---#
+
+def solve_l1_Ax_b(A, b, integer=True):
+    '''
+        min ||Ax-b||_1
+        s.t x>=0
+            1^Tx=1
+            x integer
+    '''
+    m, n = A.shape
+    c = np.concatenate((np.zeros(n), np.ones(m)))
+    A_ub = np.block([
+        [-np.identity(n), np.zeros((n, m))], 
+        [A, -np.identity(m)],
+        [-A, -np.identity(m)]
+    ])
+    A_eq = np.block(
+        [np.ones((1, n)), np.zeros((1, m))]
+    )
+    b_ub = np.concatenate((np.zeros(n), b, -b))
+    b_eq = 1
+    constraints = [
+        LinearConstraint(A_ub, ub=b_ub),
+    ]
+    if integer:
+        constraints.append(LinearConstraint(A_eq, b_eq, b_eq))
+        integrality = np.concatenate((np.ones(n), np.zeros(m)))
+        sol = milp(c=c, integrality=integrality, constraints=constraints)
+    else:
+        sol = milp(c=c, constraints=constraints)
+    return sol["x"][: n]
+
+
+def solve_l1_l1_Ax_b(A, b, beta):
+    '''
+        min ||Ax - b||_1 + beta * ||x||_1
+        s.t x>=0
+    '''
+    m, n = A.shape
+    c = np.concatenate((np.zeros(n), np.ones(m), beta*np.ones(n)))
+    A_ub = np.block([
+        [A, -np.identity(m), np.zeros((m, n))],
+        [-A, -np.identity(m), np.zeros((m, n))],
+        [-np.identity(n), np.zeros((n, m)), np.zeros((n, n))],
+        [np.identity(n), np.zeros((n, m)), -np.identity(n)]
+    ])
+    b_ub = np.concatenate((b, -b, np.zeros(n), np.zeros(n)))
+    sol = linprog(c=c, A_ub=A_ub, b_ub=b_ub)
+    return sol['x'][: n]
+
+
+def solve_l1_linf_Ax_b(A, b, beta):
+    '''
+        min ||Ax - b||_1 + beta * ||x||_inf
+        s.t x>=0
+    '''
+    m, n = A.shape
+    c = np.concatenate((np.zeros(n), np.ones(m), beta*np.ones(1)))
+    A_ub = np.block([
+        [A, -np.identity(m), np.zeros((m, 1))],
+        [-A, -np.identity(m), np.zeros((m, 1))],
+        [-np.identity(n), np.zeros((n, m)), np.zeros((n, 1))],
+        [np.identity(n), np.zeros((n, m)), -np.ones((n, 1))]
+    ])
+    b_ub = np.concatenate((b, -b, np.zeros(n), np.zeros(n)))
+    sol = linprog(c=c, A_ub=A_ub, b_ub=b_ub)
+    return sol['x'][: n]
+
+
 class MyClustering:
     def __init__(self, K):
+        '''
+            Sparse Nonnegative Matrix Factorization
+            min |A-WH|_1 + beta*sum|H_i|_1 + gamma*|W|_inf
+            https://faculty.cc.gatech.edu/~hpark/papers/GT-CSE-08-01.pdf
+        '''
         self.K = K  # number of classes
         self.labels = None
 
-        # Sparse Nonnegative Matrix Factorization
-        # min |A-WH|_1
         self.W = None
         self.H = None
         self.loss = None
-        
     
-    def train(self, trainX, verbose=False):
+    def train(self, trainX, verbose=False, beta=0.1, gamma=0.5):
         ''' Task 2-2 
             TODO: cluster trainX using LP(s) and store the parameters that discribe the identified clusters
         '''
@@ -100,43 +170,15 @@ class MyClustering:
         W = A[:, np.random.randint(0, A.shape[1], self.K)]
         H = np.zeros((self.K, A.shape[1]))
 
-        def solve_l1_Ax_b(A, b, integer=True):
-            # Solve min ||Ax-b||_1
-            # s.t. x>=0, 1^Tx=1, x integer
-            m, n = A.shape
-            c = np.concatenate((np.zeros(n), np.ones(m)))
-            A_ub = np.block([
-                [-np.identity(n), np.zeros((n, m))], 
-                [A, -np.identity(m)],
-                [-A, -np.identity(m)]
-            ])
-            A_eq = np.block(
-                [np.ones((1, n)), np.zeros((1, m))]
-            )
-            b_ub = np.concatenate((np.zeros(n), b, -b))
-            b_eq = 1
-            constraints = [
-                LinearConstraint(A_ub, ub=b_ub),
-            ]
-            if integer:
-                constraints.append(LinearConstraint(A_eq, b_eq, b_eq))
-                integrality = np.concatenate((np.ones(n), np.zeros(m)))
-                sol = milp(c=c, integrality=integrality, constraints=constraints)
-            else:
-                sol = milp(c=c, constraints=constraints)
-            return sol["x"][: n]
-
-
         # update W and H iteratively
         for _ in tqdm(range(5)):
             for i in range(A.shape[1]):
-                H[:, i] = solve_l1_Ax_b(W, A[:, i])
+                H[:, i] = solve_l1_l1_Ax_b(W, A[:, i], gamma)
             for i in range(A.shape[0]):
-                W[i, :] = solve_l1_Ax_b(H.T, A[i, :], integer=False)
+                W[i, :] = solve_l1_linf_Ax_b(H.T, A[i, :], beta)
             self.loss = np.sum(np.abs(A-W@H)) / (A.shape[0]*A.shape[1])
             if verbose:
                 print('loss: ', self.loss)
-
 
         # Update and return the cluster labels of the training data (trainX)
         self.W = W
@@ -152,6 +194,12 @@ class MyClustering:
         '''
 
         # Return the cluster labels of the input data (testX)
+        A = testX.T
+        H = np.zeros((self.K, A.shape[1]))
+        for i in range(A.shape[1]):
+            H[:, i] = solve_l1_Ax_b(self.W, A[:, i])
+
+        pred_labels = H.argmax(axis=0)
         return pred_labels
     
 
@@ -161,7 +209,7 @@ class MyClustering:
         nmi = normalized_mutual_info_score(trainY, aligned_labels)
 
         return nmi
-    
+
 
     def evaluate_classification(self, trainY, testX, testY):
         pred_labels = self.infer_data_labels(testX)
