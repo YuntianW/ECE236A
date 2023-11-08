@@ -160,7 +160,7 @@ class MyClustering:
         self.H = None
         self.loss = None
     
-    def train(self, trainX, verbose=False, beta=0.1, gamma=0.5):
+    def train(self, trainX, beta=0.1, gamma=0.5, maxiter=5, verbose=False):
         ''' Task 2-2 
             TODO: cluster trainX using LP(s) and store the parameters that discribe the identified clusters
         '''
@@ -171,7 +171,7 @@ class MyClustering:
         H = np.zeros((self.K, A.shape[1]))
 
         # update W and H iteratively
-        for _ in tqdm(range(5)):
+        for _ in tqdm(range(maxiter)):
             for i in range(A.shape[1]):
                 H[:, i] = solve_l1_l1_Ax_b(W, A[:, i], gamma)
             for i in range(A.shape[0]):
@@ -243,16 +243,54 @@ class MyClustering:
 
 ##########################################################################
 #--- Task 3 ---#
+
+
+def min_l1_Ax(A):
+    '''
+        min 1^TAx
+        s.t x>=0
+            1^Tx=1
+            x integer
+    '''
+    m, n = A.shape
+    c = np.ones((1, m)) @ A
+    A_eq = np.ones((1, n))
+    b_eq = 1
+    integrality = np.ones(n)
+
+    sol = linprog(c=c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), integrality=integrality)
+    return sol['x']
+
+
 class MyLabelSelection:
     def __init__(self, ratio):
         self.ratio = ratio  # percentage of data to label
         ### TODO: Initialize other parameters needed in your algorithm
+        self.W = None
 
     def select(self, trainX):
-        ''' Task 3-2'''
+        A = trainX.T
+        A /= np.linalg.norm(A, axis=0)
+        m, n = A.shape
+        W = np.zeros((1, m))
+        labels = list(range(n))
         
+        sel = np.random.randint(n)
+        selected = set()
+        selected.add(sel)
+        W[0, :] = A[:, sel]
+        labels.pop(sel)
+        A = np.delete(A, sel, axis=1)
 
+        for _ in tqdm(range(int(n*self.ratio)-1)):
+            sel = min_l1_Ax(W@A).argmax()
+            selected.add(labels[sel])
+            W = np.vstack((W, A[:, sel]))
+            A = np.delete(A, sel, axis=1)
+            labels.pop(sel)
+
+        self.W = W
         # Return an index list that specifies which data points to label
-        return data_to_label
+        return list(selected)
 
     
