@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.metrics import normalized_mutual_info_score, accuracy_score
 ### TODO: import any other packages you need for your solution
-from scipy.optimize import linprog, milp, LinearConstraint
+from scipy.optimize import linprog
 from tqdm import tqdm
 
 #--- Task 1 ---#
