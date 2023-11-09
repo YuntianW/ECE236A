@@ -98,15 +98,8 @@ def solve_l1_Ax_b(A, b, integer=True):
     )
     b_ub = np.concatenate((np.zeros(n), b, -b))
     b_eq = 1
-    constraints = [
-        LinearConstraint(A_ub, ub=b_ub),
-    ]
-    if integer:
-        constraints.append(LinearConstraint(A_eq, b_eq, b_eq))
-        integrality = np.concatenate((np.ones(n), np.zeros(m)))
-        sol = milp(c=c, integrality=integrality, constraints=constraints)
-    else:
-        sol = milp(c=c, constraints=constraints)
+    integrality = np.concatenate((np.ones(n), np.zeros(m)))
+    sol = linprog(c=c, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, integrality=integrality)
     return sol["x"][: n]
 
 
