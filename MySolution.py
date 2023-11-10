@@ -205,7 +205,7 @@ class MyClustering:
 
 
     def evaluate_classification(self, trainY, testX, testY):
-        pred_labels = self.infer_data_labels(testX)
+        pred_labels = self.infer_cluster(testX)
         label_reference = self.align_cluster_labels(self.labels, trainY)
         aligned_labels = self.align_cluster_labels(pred_labels, label_reference)
         accuracy = accuracy_score(testY, aligned_labels)
@@ -224,7 +224,7 @@ class MyClustering:
         return label_reference
     
     
-    def align_cluster_labels(cluster_labels, reference):
+    def align_cluster_labels(self, cluster_labels, reference):
         ''' update the cluster labels to match the class labels'''
         aligned_lables = np.zeros_like(cluster_labels)
         for i in range(len(cluster_labels)):
@@ -275,7 +275,7 @@ class MyLabelSelection:
         labels.pop(sel)
         A = np.delete(A, sel, axis=1)
 
-        for _ in tqdm(range(int(n*self.ratio)-1)):
+        for _ in tqdm(range(int(n*self.ratio))):
             sel = min_l1_Ax(W@A).argmax()
             selected.add(labels[sel])
             W = np.vstack((W, A[:, sel]))
