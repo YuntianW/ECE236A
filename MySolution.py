@@ -251,7 +251,7 @@ def min_l1_Ax(A):
     b_eq = 1
     integrality = np.ones(n)
 
-    sol = linprog(c=c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), integrality=integrality)
+    sol = linprog(c=c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), integrality=integrality, method='interior-point')
     return sol['x']
 
 
