@@ -79,7 +79,7 @@ class MyClassifier:
 ##########################################################################
 #--- Task 2 ---#
 
-def solve_l1_Ax_b(A, b, integer=True):
+def solve_l1_Ax_b(A, b):
     '''
         min ||Ax-b||_1
         s.t x>=0

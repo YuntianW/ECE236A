@@ -104,7 +104,7 @@ def test_classify_class(data_x, data_y, solution):
             for k in range(0, matrix.shape[1]):  # check the equations
                 if matrix[j, k] != 0:
                     temp = temp & (
-                            (data_x[i, :] @ sol[k, :-1] + sol[k, -1] - 1) * matrix[j, k] > 0)
+                        (data_x[i, :] @ sol[k, :-1] + sol[k, -1] - 1) * matrix[j, k] > 0)
             if temp:
                 class_temp[j, 0] = 1
         result[0, i] = class_type[np.argmax(class_temp)]
