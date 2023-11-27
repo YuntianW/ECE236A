@@ -2,8 +2,9 @@ import numpy as np
 from sklearn.metrics import normalized_mutual_info_score, accuracy_score
 ### TODO: import any other packages you need for your solution
 from scipy.optimize import linprog
-from scipy.spatial.distance import cdist
+from scipy.spatial.distance import cosine
 from tqdm import tqdm
+import random
 
 #--- Task 1 ---#
 class MyClassifier:
@@ -249,7 +250,6 @@ def min_l1_Ax(A):
     sol = linprog(c=c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), integrality=integrality, method='interior-point')
     return sol['x']
 
-
 class MyLabelSelection:
     def __init__(self, ratio):
         self.ratio = ratio  # percentage of data to label
@@ -262,15 +262,18 @@ class MyLabelSelection:
         m, n = A.shape
         W = np.zeros((1, m))
         labels = list(range(n))
-        sel = np.random.randint(n)
+        mean_sample = np.mean(trainX, axis=0)
+        distances = np.linalg.norm(trainX - mean_sample, axis=1)
+        sel = np.argmin(distances)
+        #sel = np.random.randint(n)
         selected = set()
         selected.add(sel)
         W[0, :] = A[:, sel]
         labels.pop(sel)
         A = np.delete(A, sel, axis=1)
 
-        for _ in tqdm(range(int(n*self.ratio)-1)):
-            sel = min_l1_Ax(W@A).argmax()
+        for i in tqdm(range(int(n*self.ratio)-1)):
+            sel = min_l1_Ax(W @ A).argmax()
             selected.add(labels[sel])
             W = np.vstack((W, A[:, sel]))
             A = np.delete(A, sel, axis=1)
@@ -279,3 +282,4 @@ class MyLabelSelection:
         self.W = W
         # Return an index list that specifies which data points to label
         return list(selected)
+

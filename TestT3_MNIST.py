@@ -96,30 +96,41 @@ class random_selector:
         total_samples = len(trainX)
         sample_size = int(self.ratio * total_samples)
         selected_indices = np.random.choice(total_samples, size=sample_size, replace=False)
-        print(selected_indices)
 
         return selected_indices
 
 mnist_data = prepare_mnist_data()
 print("MNIST data shape: ", mnist_data['trainX'].shape, mnist_data['trainY'].shape)
 
-label_selector = random_selector(ratio=0.2)
-#label_selector = MyLabelSelection(ratio=0.2)
+label_selector = random_selector(ratio=0.05)
+#label_selector = MyLabelSelection(ratio=0.03)
 
-class_types = np.unique(mnist_data['trainY'])
-selected_trainX = []
-selected_trainY = []
+selected_indices = label_selector.select(mnist_data['trainX'])
 
-for class_type in class_types:
-    class_indices = np.where(mnist_data['trainY'] == class_type)[0]
-    selected_indices = label_selector.select(mnist_data['trainX'][class_indices, :])
-    selected_trainX.append(mnist_data['trainX'][class_indices[selected_indices], :])
-    #selected_trainY.extend([class_type] * len(selected_indices))
+selected_samples = mnist_data['trainX'][selected_indices]
+selected_labels = mnist_data['trainY'][selected_indices]
+print(selected_labels)
+
+class_type = set(mnist_data['trainY'])
+class_type = np.array(list(class_type), dtype=np)
+trainY = []
+trainX = []
+
+count = 0
+for i in class_type:
+    trainY.append(np.where(selected_labels == i)[0])
+    # testY.append(np.where(mnist_data['testY'] == i)[0])
+    trainX.append(selected_samples[trainY[count], :])
+    # testX.append(mnist_data['testX'][testY[count], :])
+    count += 1
+    
+
+class_1 = trainX[0]
+class_2 = trainX[1]
 
 
 epsilon = -0.1  
-solution = train_all_classes(selected_trainX, epsilon)
-
+solution = train_all_classes(trainX, epsilon)
 
 testX = mnist_data['testX']
 testY = mnist_data['testY']

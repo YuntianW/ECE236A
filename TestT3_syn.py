@@ -5,6 +5,8 @@ from MySolution import MyClassifier, MyClustering, MyLabelSelection
 import utils
 from scipy.optimize import linprog
 from scipy.spatial.distance import cdist
+import time
+start_time = time.time() 
 
 class random_selector:
     def __init__(self, ratio):
@@ -13,28 +15,29 @@ class random_selector:
         total_samples = len(trainX)
         sample_size = int(self.ratio * total_samples)
         selected_indices = np.random.choice(total_samples, size=sample_size, replace=False)
-        print(selected_indices)
 
         return selected_indices
 
 
 syn_data = prepare_synthetic_data()
-mnist_data=prepare_mnist_data()
+#mnist_data=prepare_mnist_data()
 print("Synthetic data shape: ", syn_data['trainX'].shape, syn_data['trainY'].shape)
 test_x = syn_data['testX']
 test_y = syn_data['testY']
 
-#label_selector = random_selector(ratio=0.04)
-label_selector = MyLabelSelection(ratio=0.05)
-index_class = [np.where(syn_data['trainY'] == i)[0] for i in range(3)]
-selected_indices_class = []
+label_selector = random_selector(ratio=0.1)
+#label_selector = MyLabelSelection(ratio=0.2)
 
-for indices in index_class:
-    class_data = syn_data['trainX'][indices, :]
-    selected_indices = label_selector.select(class_data)
-    selected_indices_class.append(indices[selected_indices])
+selected_indices = label_selector.select(syn_data['trainX'])
+print(selected_indices)
+selected_samples = syn_data['trainX'][selected_indices]
 
-data_class = [syn_data['trainX'][selected_indices, :] for selected_indices in selected_indices_class]
+selected_labels = syn_data['trainY'][selected_indices]
+print(selected_labels)
+
+num_classes = len(set(selected_labels))
+index_class = [np.where(selected_labels == i)[0] for i in range(num_classes)]
+data_class = [selected_samples[index_class[i], :] for i in range(num_classes)]
 
 epsilon = 3
 index0 = 0
@@ -124,6 +127,11 @@ def test_classify_class(data_x, data_y, solution):
 
 
 result, acc = test_classify_class(data_x=test_x, data_y=test_y, solution=solution)
+
+end_time = time.time()
+elapsed_time = end_time - start_time
+
+print(f"Finding the hyperplane took {elapsed_time} seconds")
 plt.figure()
 plt.subplot(1, 2, 1)
 plt.scatter(test_x[:, 0], test_x[:, 1], c=result)
@@ -132,3 +140,4 @@ plt.subplot(1, 2, 2)
 plt.scatter(test_x[:, 0], test_x[:, 1], c=test_y)
 plt.title('Ground Truth')
 plt.show()
+
