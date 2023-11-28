@@ -13,70 +13,98 @@ class MyClassifier:
         self.epsilon = epsilon
         self.solution = None
         self.matrix = None
+        self.result=None
 
     def train_two_class(self, class_1, class_2):
-        data_0, data_1 = (class_1, class_2) if np.mean(class_1[:, 1]) > np.mean(class_2[:, 1]) else (class_2, class_1)
+        epsilon= self.epsilon
+        A = np.zeros((2 * (len(class_1) + len(class_2)), class_1.shape[1] + 1 + len(class_1) + len(class_2)))
+        b = np.zeros((2 * (len(class_1) + len(class_2)), 1))
+        c = np.zeros((1, class_1.shape[1] + 1 + len(class_1) + len(class_2)))
+        A[:len(class_1), :class_1.shape[1]] = -class_1[:, :]
+        A[:len(class_1), class_1.shape[1]] = -1
+        A[len(class_1):len(class_1) + len(class_2), :class_1.shape[1]] = class_2[:, :]
+        A[len(class_1):len(class_1) + len(class_2), class_1.shape[1]] = 1
+        A[0:len(class_1) + len(class_2), (class_1.shape[1] + 1):] = -np.diag(np.ones(len(class_1) + len(class_2)))
+        A[len(class_1) + len(class_2):, (class_1.shape[1] + 1):] = -np.diag(np.ones(len(class_1) + len(class_2)))
 
-        A = np.zeros((2 * (len(data_0) + len(data_1)), 2 + len(data_0) + len(data_1)))
-        b = np.zeros((2 * (len(data_0) + len(data_1)), 1))
+        b[:len(class_1)] = -1 - epsilon
+        b[len(class_1):len(class_1) + len(class_2)] = 1 - epsilon
 
-        A[:len(data_0), 0] = data_0[:, 0]
-        A[:len(data_0), 1] = 1
-        b[:len(data_0),0] = data_0[:, 1] - self.epsilon
-
-        A[len(data_0):len(data_0) + len(data_1), 0] = -data_1[:, 0]
-        A[len(data_0):len(data_0) + len(data_1), 1] = -1
-        b[len(data_0):len(data_0) + len(data_1),0] = -data_1[:, 1] - self.epsilon
-        
-        A[:len(data_0) + len(data_1), 2:] = -np.eye(len(data_0) + len(data_1))
-        A[len(data_0) + len(data_1):, 2:] = -np.eye(len(data_0) + len(data_1))
-
-        c = np.ones(len(data_0) + len(data_1) + 2)
-        c[:2] = 0 
+        c[0, (class_1.shape[1] + 1):] = np.ones((1, len(class_1) + len(class_2)))
         res = linprog(c=c, A_ub=A, b_ub=b)
-        sol = res.x[:2]
-        return sol
+        a_res = res.x[:class_1.shape[1]]
+        b_res = res.x[class_1.shape[1]]
+        if np.mean(class_1 @ a_res + b_res) < np.mean(class_2 @ a_res + b_res):
+            which_one_larger = 1
+            acc1 = np.sum(class_1 @ a_res + b_res < 1) / class_1[:, 0].shape[0]
+            acc2 = np.sum(class_2 @ a_res + b_res > 1) / class_2[:, 0].shape[0]
+        else:
+            which_one_larger = 0
+            acc1 = np.sum(class_1 @ a_res + b_res > 1) / class_1[:, 0].shape[0]
+            acc2 = np.sum(class_2 @ a_res + b_res < 1) / class_2[:, 0].shape[0]
+        # print(acc1, acc2)
+        return res.x[:class_1.shape[1] + 1], which_one_larger
 
-    def train_all_classes(self, data_class):
-        num_combinations = self.K * (self.K - 1) // 2
-        sol = np.zeros((num_combinations, 2))
-        matrix = np.zeros((self.K, num_combinations))
+    def train_all_classes(self, data):
+        order = np.zeros((int(len(data) * (len(data) - 1) / 2), 2), dtype=np.int)
+        sol = np.zeros((int(len(data) * (len(data) - 1) / 2), data[0].shape[1] + 1))
+        matrix = np.zeros((len(data), int(len(data) * (len(data) - 1) / 2)))
         count = 0
 
-        for i in range(self.K):
-            for j in range(i + 1, self.K):
-                sol_temp = self.train_two_class(data_class[i], data_class[j])
-                sol[count] = sol_temp
-
-                matrix[i, count] = 1 if np.mean(data_class[i][:, 1]) > np.mean(data_class[j][:, 1]) else -1
-                matrix[j, count] = 1 if np.mean(data_class[i][:, 1]) < np.mean(data_class[j][:, 1]) else -1
+        for i in range(0, len(data)):
+            for j in range(i + 1, len(data)):
+                order[count, 0] = i
+                order[count, 1] = j
                 count += 1
 
+        for i in range(0, order.shape[0]):
+            sol_temp, which_larger = self.train_two_class(data[order[i][0]], data[order[i][1]])
+            sol[i, :] = (sol_temp)
+            matrix[order[i][0], i] = 1 if which_larger == 0 else -1
+            matrix[order[i][1], i] = 1 if which_larger == 1 else -1
         return sol, matrix
 
     def train(self, data):
-        index_class = [np.where(data['trainY'] == k)[0] for k in range(self.K)]
-        data_class = [data['trainX'][indices] for indices in index_class]
-        self.solution, self.matrix = self.train_all_classes(data_class)
+        class_type = set(data['trainY'])
+        class_type = np.array(list(class_type), dtype=np.int)
+        trainY = []
+        trainX = []
+        count = 0
+        for i in class_type:
+            trainY.append(np.where(data['trainY'] == i)[0])
+            # testY.append(np.where(mnist_data['testY'] == i)[0])
+            trainX.append(data['trainX'][trainY[count], :])
+            # testX.append(mnist_data['testX'][testY[count], :])
+            count += 1
 
-    def predict(self, testX):
-        result = np.zeros(len(testX))
-        for i in range(len(testX)):
-            class_temp = np.zeros(self.K)
-            for j in range(self.K):
+        self.solution, self.matrix = self.train_all_classes(trainX)
+
+    def predict(self, data_x,data_y):
+        class_type = set(data_y)
+        class_type = np.array(list(class_type), dtype=np.int)
+        result = np.zeros((1, len(data_x)))
+        sol = self.solution
+        matrix = self.matrix
+        for i in range(0, len(data_x)):  # check each data
+            class_temp = np.zeros((matrix.shape[0], 1))
+            for j in range(0, matrix.shape[0]):  # check which class
                 temp = True
-                for k in range(len(self.solution)):
-                    if self.matrix[j, k] != 0:
-                        temp = temp and ((testX[i, 1] - (testX[i, 0] * self.solution[k, 0] + self.solution[k, 1])) * self.matrix[j, k] > 0)
+                for k in range(0, matrix.shape[1]):  # check the equations
+                    if matrix[j, k] != 0:
+                        temp = temp & (
+                                (data_x[i, :] @ sol[k, :-1] + sol[k, -1] - 1) * matrix[j, k] > 0)
                 if temp:
-                    class_temp[j] = 1
-            result[i] = np.argmax(class_temp)
+                    class_temp[j, 0] = 1
+            result[0, i] = class_type[np.argmax(class_temp)]
+        # acc = np.sum(result == data_y) / len(data_y)
+        result=result.squeeze(0)
         return result
 
     def evaluate(self, testX, testY):
-        predY = self.predict(testX)
+        predY = self.predict(testX,testY)
         accuracy = accuracy_score(testY, predY)
         return accuracy
+
 
 ##########################################################################
 #--- Task 2 ---#
