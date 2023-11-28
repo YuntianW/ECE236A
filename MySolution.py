@@ -267,15 +267,16 @@ class MyLabelSelection:
         self.W = None
 
     def select(self, trainX):
-        A = trainX.T
+        copy=trainX.copy()
+        A = copy.T
         A /= np.linalg.norm(A, axis=0)
         m, n = A.shape
         W = np.zeros((1, m))
         labels = list(range(n))
         mean_sample = np.mean(trainX, axis=0)
         distances = np.linalg.norm(trainX - mean_sample, axis=1)
-        sel = np.argmin(distances)
-        #sel = np.random.randint(n)
+        #sel = np.argmax(distances)
+        sel = np.random.randint(n)
         selected = set()
         selected.add(sel)
         print(selected)
@@ -284,7 +285,7 @@ class MyLabelSelection:
         A = np.delete(A, sel, axis=1)
 
         for i in tqdm(range(int(n*self.ratio)-1)):
-            sel = min_l1_Ax_relaxed(W @ A).argmax()
+            sel = min_l1_Ax_relaxed(W@A).argmax()
             selected.add(labels[sel])
             W = np.vstack((W, A[:, sel]))
             A = np.delete(A, sel, axis=1)
@@ -292,8 +293,6 @@ class MyLabelSelection:
 
 
         self.W = W
-        selected_indiced=list(selected)
-        random.shuffle(selected_indiced)
         # Return an index list that specifies which data points to label
-        return np.array(selected_indiced)
+        return list(selected)
 

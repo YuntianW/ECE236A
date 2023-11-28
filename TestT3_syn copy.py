@@ -94,94 +94,45 @@ def test_classify_class(data_x, data_y, solution):
     return result, acc
 
 
-label_percentages = [0.05, 0.1, 0.2, 0.5]
-accuracies_our_algo = []
-accuracies_random = []
-
-random_selector = random_selector(ratio=None)
-label_selector = MyLabelSelection(ratio=None)
-
-for ratio in label_percentages:
-    syn_data = prepare_synthetic_data()
-    test_x = syn_data['testX']
-    test_y = syn_data['testY']
-
-    label_selector.ratio = ratio
-    random_selector.ratio = ratio
-    selected_indices=[]
-    selected_samples=[]
-    selected_labels=[]
-
-    selected_indices = label_selector.select(syn_data['trainX'])
-
-    selected_samples = syn_data['trainX'][selected_indices]
-    selected_labels = syn_data['trainY'][selected_indices]
-    index_class = [np.where(selected_labels == 0)[0], np.where(selected_labels == 1)[0],
-                np.where(selected_labels== 2)[0]]
-    data_class = [selected_samples[index_class[0], :], selected_samples[index_class[1], :],
-                selected_samples[index_class[2], :]]
-
-    epsilon = 3
-    index0 = 0
-    index1 = 1
-    index2 = 2
-    data_0 = data_class[index0]
-    data_1 = data_class[index1]
-    data_2 = data_class[index2]
-
-    label_0 = index_class[index0]
-    label_1 = index_class[index1]
-    label_2 = index_class[index2]
-
-    solution = train_all_classes(data_class, 0.1)
-    result, acc = test_classify_class(data_x=test_x, data_y=test_y, solution=solution)
-    print(acc)
-
-    accuracies_our_algo.append(acc)
-
-    selected_indices=[]
-    selected_indices = random_selector.select(syn_data['trainX'])
-    
-
-    selected_samples = syn_data['trainX'][selected_indices]
-    selected_labels = syn_data['trainY'][selected_indices]
-    index_class = [np.where(selected_labels == 0)[0], np.where(selected_labels == 1)[0],
-                np.where(selected_labels== 2)[0]]
-    data_class = [selected_samples[index_class[0], :], selected_samples[index_class[1], :],
-                selected_samples[index_class[2], :]]
-    epsilon = 3
-    index0 = 0
-    index1 = 1
-    index2 = 2
-    data_0 = data_class[index0]
-    data_1 = data_class[index1]
-    data_2 = data_class[index2]
-
-    label_0 = index_class[index0]
-    label_1 = index_class[index1]
-    label_2 = index_class[index2]
-
-    solution = train_all_classes(data_class, 0.1)
-    result, acc = test_classify_class(data_x=test_x, data_y=test_y, solution=solution)
-    accuracies_random.append(acc) 
+syn_data = prepare_synthetic_data()
+#mnist_data=prepare_mnist_data()
+#print("Synthetic data shape: ", syn_data['trainX'].shape, syn_data['trainY'].shape)
+test_x = syn_data['testX']
+test_y = syn_data['testY']
 
 
-plt.plot(label_percentages, accuracies_our_algo, label='Our Algo', marker='x', markersize=8)
-plt.plot(label_percentages, accuracies_random, label='Random Selection', marker='o', markersize=8)
-plt.ylim(0, 1)
-plt.legend()
-plt.xlabel("Label Percentage", fontsize=12)
-plt.ylabel('Test Accuracy', fontsize=12)
-plt.title("Label Selection on syn Data", fontsize=14)
-plt.show()
+#label_selector = random_selector(ratio=0.1)
+label_selector = MyLabelSelection(ratio=0.7)
+
+selected_indices = label_selector.select(syn_data['trainX'])
+print(selected_indices)
+selected_samples = syn_data['trainX'][selected_indices]
+selected_labels = syn_data['trainY'][selected_indices]
+num_classes = len(set(selected_labels))
+index_class = [np.where(selected_labels == i)[0] for i in range(num_classes)]
+data_class = [selected_samples[index_class[i], :] for i in range(num_classes)]
 
 
 
+epsilon = 3
+index0 = 0
+index1 = 1
+index2 = 2
+data_0 = data_class[index0]
+data_1 = data_class[index1]
+data_2 = data_class[index2]
+label_0 = index_class[index0]
+label_1 = index_class[index1]
+label_2 = index_class[index2]
 
+
+solution = train_all_classes(data_class, 0.1)
+
+result, acc = test_classify_class(data_x=test_x, data_y=test_y, solution=solution)
 
 end_time = time.time()
 elapsed_time = end_time - start_time
-'''
+
 print(f"Finding the hyperplane took {elapsed_time} seconds")
 plt.figure()
 plt.subplot(1, 2, 1)
@@ -191,4 +142,4 @@ plt.subplot(1, 2, 2)
 plt.scatter(test_x[:, 0], test_x[:, 1], c=test_y)
 plt.title('Ground Truth')
 plt.show()
-'''
+

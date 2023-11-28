@@ -95,45 +95,99 @@ class random_selector:
 
         return selected_indices
 
-mnist_data = prepare_mnist_data()
-print("MNIST data shape: ", mnist_data['trainX'].shape, mnist_data['trainY'].shape)
+label_percentages = [0.05, 0.1, 0.2, 0.5]
+accuracies_our_algo = []
+accuracies_random = []
 
-label_selector = random_selector(ratio=0.2)
-#label_selector = MyLabelSelection(ratio=0.2)
+random_selector = random_selector(ratio=None)
+label_selector = MyLabelSelection(ratio=None)
 
-copy_data=mnist_data['trainX']
-selected_indices = label_selector.select(mnist_data['trainX'])
-print(selected_indices)
+for ratio in label_percentages:
 
+    mnist_data = prepare_mnist_data()
+    print("MNIST data shape: ", mnist_data['trainX'].shape, mnist_data['trainY'].shape)
 
-selected_samples = mnist_data['trainX'][selected_indices]
-selected_labels = mnist_data['trainY'][selected_indices]
-print(selected_labels)
+    label_selector.ratio = ratio
+    random_selector.ratio = ratio
+    selected_indices=[]
+    selected_samples=[]
+    selected_labels=[]
 
-class_type = set(mnist_data['trainY'])
-class_type = np.array(list(class_type), dtype=np)
-trainY = []
-trainX = []
-
-count = 0
-for i in class_type:
-    trainY.append(np.where(selected_labels == i)[0])
-    # testY.append(np.where(mnist_data['testY'] == i)[0])
-    trainX.append(selected_samples[trainY[count], :])
-    # testX.append(mnist_data['testX'][testY[count], :])
-    count += 1
+    selected_indices = label_selector.select(mnist_data['trainX'])
+    selected_samples = mnist_data['trainX'][selected_indices]
+    selected_labels = mnist_data['trainY'][selected_indices]
 
 
-data=trainX
+    class_type = set(mnist_data['trainY'])
+    class_type = np.array(list(class_type), dtype=np)
+    trainY = []
+    trainX = []
 
-class_1 = trainX[0]
-class_2 = trainX[1]
+    count = 0
+    for i in class_type:
+        trainY.append(np.where(selected_labels == i)[0])
+        # testY.append(np.where(mnist_data['testY'] == i)[0])
+        trainX.append(selected_samples[trainY[count], :])
+        # testX.append(mnist_data['testX'][testY[count], :])
+        count += 1
 
-epsilon = -0.4
-solution = train_all_classes(data, epsilon)
 
-testX = mnist_data['testX']
-testY = mnist_data['testY']
+    data=trainX
 
-predict, accuracy = test_classify_class(testX, testY, solution)
-print("Test Accuracy: ", accuracy)
+    class_1 = trainX[0]
+    class_2 = trainX[1]
+
+    epsilon = -0.5
+    solution = train_all_classes(data, epsilon)
+
+    testX = mnist_data['testX']
+    testY = mnist_data['testY']
+
+    predict, accuracy = test_classify_class(testX, testY, solution)
+    print("Test Accuracy: ", accuracy)
+
+    accuracies_our_algo.append(accuracy)
+
+    selected_indices = random_selector.select(mnist_data['trainX'])
+    selected_samples = mnist_data['trainX'][selected_indices]
+    selected_labels = mnist_data['trainY'][selected_indices]
+
+
+    class_type = set(mnist_data['trainY'])
+    class_type = np.array(list(class_type), dtype=np)
+    trainY = []
+    trainX = []
+
+    count = 0
+    for i in class_type:
+        trainY.append(np.where(selected_labels == i)[0])
+        # testY.append(np.where(mnist_data['testY'] == i)[0])
+        trainX.append(selected_samples[trainY[count], :])
+        # testX.append(mnist_data['testX'][testY[count], :])
+        count += 1
+
+
+    data=trainX
+
+    class_1 = trainX[0]
+    class_2 = trainX[1]
+
+    solution = train_all_classes(data, epsilon)
+
+    testX = mnist_data['testX']
+    testY = mnist_data['testY']
+
+    predict, accuracy = test_classify_class(testX, testY, solution)
+    print("Test Accuracy: ", accuracy)
+
+    accuracies_random.append(accuracy)
+
+
+plt.plot(label_percentages, accuracies_our_algo, label='Our Algo', marker='x', markersize=8)
+plt.plot(label_percentages, accuracies_random, label='Random Selection', marker='o', markersize=8)
+plt.ylim(0, 1)
+plt.legend()
+plt.xlabel("Label Percentage", fontsize=12)
+plt.ylabel('Test Accuracy', fontsize=12)
+plt.title("Label Selection on MNIST Data", fontsize=14)
+plt.show()
