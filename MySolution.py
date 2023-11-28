@@ -250,6 +250,16 @@ def min_l1_Ax(A):
     sol = linprog(c=c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), integrality=integrality, method='interior-point')
     return sol['x']
 
+def min_l1_Ax_relaxed(A):
+    m, n = A.shape
+    c = np.ones((1, m)) @ A
+    A_eq = np.ones((1, n))
+    b_eq = 1
+
+    # Remove the integrality constraint
+    sol = linprog(c=c, A_eq=A_eq, b_eq=b_eq, bounds=(0, 1.1), method='highs')
+    return sol['x']
+
 class MyLabelSelection:
     def __init__(self, ratio):
         self.ratio = ratio  # percentage of data to label
@@ -268,18 +278,22 @@ class MyLabelSelection:
         #sel = np.random.randint(n)
         selected = set()
         selected.add(sel)
+        print(selected)
         W[0, :] = A[:, sel]
         labels.pop(sel)
         A = np.delete(A, sel, axis=1)
 
         for i in tqdm(range(int(n*self.ratio)-1)):
-            sel = min_l1_Ax(W @ A).argmax()
+            sel = min_l1_Ax_relaxed(W @ A).argmax()
             selected.add(labels[sel])
             W = np.vstack((W, A[:, sel]))
             A = np.delete(A, sel, axis=1)
             labels.pop(sel)
 
+
         self.W = W
+        selected_indiced=list(selected)
+        random.shuffle(selected_indiced)
         # Return an index list that specifies which data points to label
-        return list(selected)
+        return np.array(selected_indiced)
 

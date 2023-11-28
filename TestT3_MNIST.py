@@ -65,8 +65,6 @@ def train_all_classes(data, epsilon):
     return sol, matrix
 
 
-
-
 def test_classify_class(data_x, data_y, solution):
     class_type = set(data_y)
     class_type = np.array(list(class_type), dtype=np)
@@ -87,8 +85,6 @@ def test_classify_class(data_x, data_y, solution):
     acc = np.sum(result == data_y) / len(data_y)
     return result, acc
 
-
-
 class random_selector:
     def __init__(self, ratio):
         self.ratio = ratio  
@@ -102,10 +98,11 @@ class random_selector:
 mnist_data = prepare_mnist_data()
 print("MNIST data shape: ", mnist_data['trainX'].shape, mnist_data['trainY'].shape)
 
-label_selector = random_selector(ratio=0.05)
-#label_selector = MyLabelSelection(ratio=0.03)
+label_selector = random_selector(ratio=0.5)
+#label_selector = MyLabelSelection(ratio=0.5)
 
 selected_indices = label_selector.select(mnist_data['trainX'])
+print(selected_indices)
 
 selected_samples = mnist_data['trainX'][selected_indices]
 selected_labels = mnist_data['trainY'][selected_indices]
@@ -123,16 +120,18 @@ for i in class_type:
     trainX.append(selected_samples[trainY[count], :])
     # testX.append(mnist_data['testX'][testY[count], :])
     count += 1
-    
+
+
+data=trainX
 
 class_1 = trainX[0]
 class_2 = trainX[1]
 
-
 epsilon = -0.1  
-solution = train_all_classes(trainX, epsilon)
+solution = train_all_classes(data, epsilon)
 
 testX = mnist_data['testX']
 testY = mnist_data['testY']
+
 predict, accuracy = test_classify_class(testX, testY, solution)
 print("Test Accuracy: ", accuracy)
