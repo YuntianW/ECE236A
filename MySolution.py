@@ -229,7 +229,7 @@ class MyClustering:
             for i in range(A.shape[1]):
                 H[:, i] = solve_l2_Ax_b_dist(W, A[:, i])
             for i in range(A.shape[0]):
-                W[i, :] = nnls(H.T, A[i, :])[0]
+                W[i, :] = solve_l1_linf_Ax_b(H.T, A[i, :])
             self.loss = np.sum(np.abs(A-W@H)) / (A.shape[0]*A.shape[1])
             if verbose:
                 print('loss: ', self.loss)
