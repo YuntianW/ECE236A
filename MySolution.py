@@ -227,9 +227,9 @@ class MyClustering:
         for _ in range(maxiter):
             # print(H)
             for i in range(A.shape[1]):
-                H[:, i] = solve_l1_l1_Ax_b(W, A[:, i])
+                H[:, i] = solve_l2_Ax_b_dist(W, A[:, i])
             for i in range(A.shape[0]):
-                W[i, :] = solve_l1_linf_Ax_b(H.T, A[i, :])
+                W[i, :] = nnls(H.T, A[i, :])[0]
             self.loss = np.sum(np.abs(A-W@H)) / (A.shape[0]*A.shape[1])
             if verbose:
                 print('loss: ', self.loss)
@@ -356,12 +356,11 @@ class MyLabelSelection:
         sel = np.random.randint(n)
         selected = set()
         selected.add(sel)
-        print(selected)
         W[0, :] = A[:, sel]
         labels.pop(sel)
         A = np.delete(A, sel, axis=1)
 
-        for i in tqdm(range(int(n*self.ratio)-1)):
+        for i in range(int(n*self.ratio)-1):
             sel = min_l1_Ax_relaxed(W@A).argmax()
             selected.add(labels[sel])
             W = np.vstack((W, A[:, sel]))
