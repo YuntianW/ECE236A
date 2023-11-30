@@ -13,12 +13,53 @@ class MyClassifier:
     def __init__(self, K, epsilon=0.1):
         self.K = K 
         self.epsilon = epsilon
-        self.solution = None
-        self.matrix = None
-        self.result=None
+        self.solutions = None
+        # self.matrix = None
+        self.testX=None
+        self.testY=None
+        self.trainX=None
 
-    def train_two_class(self, class_1, class_2):
-        epsilon= self.epsilon
+    def train(self, data,percentage=1):
+        data=data.copy()
+        class_type = set(data['trainY'])
+        class_type = np.array(list(class_type), dtype=np.int)
+        data['testX']=data['testX'][:int(data['testX'].shape[0]*percentage),:]
+        data['testY']=data['testY'][:int(data['testY'].shape[0]*percentage)]
+        data['trainX']=data['trainX'][:int(data['trainX'].shape[0]*percentage),:]
+        data['trainY']=data['trainY'][:int(data['trainY'].shape[0]*percentage)]
+        trainY = []
+        trainX = []
+
+        self.testX = data['testX']
+        self.testY = data['testY']
+        count = 0
+        for i in class_type:
+            trainY.append(np.where(data['trainY'] == i)[0])
+            # testY.append(np.where(mnist_data['testY'] == i)[0])
+            trainX.append(data['trainX'][trainY[count], :])
+            # testX.append(mnist_data['testX'][testY[count], :])
+            count += 1
+        self.trainX = trainX
+        self.solutions = self.train_all_classes(trainX, self.epsilon)
+
+    def train_all_classes(self,data, epsilon):
+        order = np.zeros((int(len(data) * (len(data) - 1) / 2), 2), dtype=np.int)
+        sol = np.zeros((int(len(data) * (len(data) - 1) / 2), data[0].shape[1] + 1))
+        count = 0
+        for i in range(0, len(data)):
+            for j in range(i + 1, len(data)):
+                order[count, 0] = i
+                order[count, 1] = j
+                count += 1
+        matrix = np.zeros((len(data), int(len(data) * (len(data) - 1) / 2)))
+        for i in range(0, order.shape[0]):
+            sol_temp, which_larger = self.train_two_class(data[order[i][0]], data[order[i][1]], epsilon)
+            sol[i, :] = (sol_temp)
+            matrix[order[i][0], i] = 1 if which_larger == 0 else -1
+            matrix[order[i][1], i] = 1 if which_larger == 1 else -1
+        return sol, matrix
+
+    def train_two_class(self,class_1, class_2, epsilon):
         A = np.zeros((2 * (len(class_1) + len(class_2)), class_1.shape[1] + 1 + len(class_1) + len(class_2)))
         b = np.zeros((2 * (len(class_1) + len(class_2)), 1))
         c = np.zeros((1, class_1.shape[1] + 1 + len(class_1) + len(class_2)))
@@ -47,46 +88,12 @@ class MyClassifier:
         # print(acc1, acc2)
         return res.x[:class_1.shape[1] + 1], which_one_larger
 
-    def train_all_classes(self, data):
-        order = np.zeros((int(len(data) * (len(data) - 1) / 2), 2), dtype=np.int)
-        sol = np.zeros((int(len(data) * (len(data) - 1) / 2), data[0].shape[1] + 1))
-        matrix = np.zeros((len(data), int(len(data) * (len(data) - 1) / 2)))
-        count = 0
-
-        for i in range(0, len(data)):
-            for j in range(i + 1, len(data)):
-                order[count, 0] = i
-                order[count, 1] = j
-                count += 1
-
-        for i in range(0, order.shape[0]):
-            sol_temp, which_larger = self.train_two_class(data[order[i][0]], data[order[i][1]])
-            sol[i, :] = (sol_temp)
-            matrix[order[i][0], i] = 1 if which_larger == 0 else -1
-            matrix[order[i][1], i] = 1 if which_larger == 1 else -1
-        return sol, matrix
-
-    def train(self, data):
-        class_type = set(data['trainY'])
-        class_type = np.array(list(class_type), dtype=np.int)
-        trainY = []
-        trainX = []
-        count = 0
-        for i in class_type:
-            trainY.append(np.where(data['trainY'] == i)[0])
-            # testY.append(np.where(mnist_data['testY'] == i)[0])
-            trainX.append(data['trainX'][trainY[count], :])
-            # testX.append(mnist_data['testX'][testY[count], :])
-            count += 1
-
-        self.solution, self.matrix = self.train_all_classes(trainX)
-
-    def predict(self, data_x,data_y):
+    def test_classify_class(self,data_x, data_y, solution):
         class_type = set(data_y)
         class_type = np.array(list(class_type), dtype=np.int)
         result = np.zeros((1, len(data_x)))
-        sol = self.solution
-        matrix = self.matrix
+        sol = solution[0]
+        matrix = solution[1]
         for i in range(0, len(data_x)):  # check each data
             class_temp = np.zeros((matrix.shape[0], 1))
             for j in range(0, matrix.shape[0]):  # check which class
@@ -98,14 +105,13 @@ class MyClassifier:
                 if temp:
                     class_temp[j, 0] = 1
             result[0, i] = class_type[np.argmax(class_temp)]
-        # acc = np.sum(result == data_y) / len(data_y)
         result=result.squeeze(0)
         return result
-
     def evaluate(self, testX, testY):
-        predY = self.predict(testX,testY)
+        predY = self.test_classify_class(testX,testY,self.solutions)
         accuracy = accuracy_score(testY, predY)
         return accuracy
+
 
 
 ##########################################################################
