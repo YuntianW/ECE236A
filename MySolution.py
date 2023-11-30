@@ -2,9 +2,11 @@ import numpy as np
 from sklearn.metrics import normalized_mutual_info_score, accuracy_score
 ### TODO: import any other packages you need for your solution
 from scipy.optimize import linprog
+from scipy.optimize import nnls
 from scipy.spatial.distance import cosine
 from tqdm import tqdm
 import random
+from collections import Counter
 
 #--- Task 1 ---#
 class MyClassifier:
@@ -108,7 +110,7 @@ class MyClassifier:
 
 ##########################################################################
 #--- Task 2 ---#
-
+#### Helper functions ####
 def solve_l1_Ax_b(A, b):
     '''
         min ||Ax-b||_1
@@ -133,7 +135,20 @@ def solve_l1_Ax_b(A, b):
     return sol["x"][: n]
 
 
-def solve_l1_l1_Ax_b(A, b, beta):
+def solve_l2_Ax_b_dist(A, b):
+    '''
+        min ||Ax-b||_2
+        s.t x>=0
+            1^Tx=1
+            x integer
+    '''
+    dist = np.linalg.norm(A.T - b, axis=1)
+    sol = np.zeros(A.shape[1])
+    sol[np.argmin(dist)] = 1
+    return sol
+
+
+def solve_l1_l1_Ax_b(A, b, beta=0.5):
     '''
         min ||Ax - b||_1 + beta * ||x||_1
         s.t x>=0
@@ -151,7 +166,7 @@ def solve_l1_l1_Ax_b(A, b, beta):
     return sol['x'][: n]
 
 
-def solve_l1_linf_Ax_b(A, b, beta):
+def solve_l1_linf_Ax_b(A, b, beta=0.1):
     '''
         min ||Ax - b||_1 + beta * ||x||_inf
         s.t x>=0
@@ -165,6 +180,21 @@ def solve_l1_linf_Ax_b(A, b, beta):
         [np.identity(n), np.zeros((n, m)), -np.ones((n, 1))]
     ])
     b_ub = np.concatenate((b, -b, np.zeros(n), np.zeros(n)))
+    sol = linprog(c=c, A_ub=A_ub, b_ub=b_ub)
+    return sol['x'][: n]
+
+def solve_l1_Ax_b(A, b):
+    '''
+        min ||Ax - b||_1
+        s.t x>=0
+    '''
+    m, n = A.shape
+    c = np.concatenate((np.zeros(n), np.ones(m)))
+    A_ub = np.block([
+        [A, -np.identity(m)],
+        [-A, -np.identity(m)]
+    ])
+    b_ub = np.concatenate((b, -b))
     sol = linprog(c=c, A_ub=A_ub, b_ub=b_ub)
     return sol['x'][: n]
 
@@ -183,7 +213,7 @@ class MyClustering:
         self.H = None
         self.loss = None
     
-    def train(self, trainX, beta=0.1, gamma=0.5, maxiter=5, verbose=False):
+    def train(self, trainX, maxiter=30, verbose=False):
         ''' Task 2-2 
             TODO: cluster trainX using LP(s) and store the parameters that discribe the identified clusters
         '''
@@ -194,11 +224,12 @@ class MyClustering:
         H = np.zeros((self.K, A.shape[1]))
 
         # update W and H iteratively
-        for _ in tqdm(range(maxiter)):
+        for _ in range(maxiter):
+            # print(H)
             for i in range(A.shape[1]):
-                H[:, i] = solve_l1_l1_Ax_b(W, A[:, i], gamma)
+                H[:, i] = solve_l1_l1_Ax_b(W, A[:, i])
             for i in range(A.shape[0]):
-                W[i, :] = solve_l1_linf_Ax_b(H.T, A[i, :], beta)
+                W[i, :] = solve_l1_linf_Ax_b(H.T, A[i, :])
             self.loss = np.sum(np.abs(A-W@H)) / (A.shape[0]*A.shape[1])
             if verbose:
                 print('loss: ', self.loss)
@@ -227,40 +258,58 @@ class MyClustering:
     
 
     def evaluate_clustering(self,trainY):
-        label_reference = self.align_cluster_labels(self.labels, trainY)
-        aligned_labels = self.align_cluster_labels(self.labels, label_reference)
+        
+        # label_reference = self.align_cluster_labels(self.labels, trainY)
+        # aligned_labels = self.align_cluster_labels(self.labels, label_reference)
+        aligned_labels = []
+        for i in range(len(self.labels)):
+            aligned_labels.append(self.cluster_to_label[self.labels[i]])
         nmi = normalized_mutual_info_score(trainY, aligned_labels)
+        print("train acc is: ", accuracy_score(trainY, aligned_labels))
 
         return nmi
 
 
-    def evaluate_classification(self, trainY, testX, testY):
+    def evaluate_classification(self, testX, testY):
         pred_labels = self.infer_cluster(testX)
-        label_reference = self.align_cluster_labels(self.labels, trainY)
-        aligned_labels = self.align_cluster_labels(pred_labels, label_reference)
+        aligned_labels = []
+        for i in range(len(pred_labels)):
+            aligned_labels.append(self.cluster_to_label[pred_labels[i]])
         accuracy = accuracy_score(testY, aligned_labels)
 
         return accuracy
+    
+    def align_labels(self, true_labels):
+        #print(self.labels)
+        #print(self.H)
+        self.cluster_to_label = []
+        true_labels = true_labels.astype(np.int64)
+        for i in range(self.K):
+            l = list(true_labels[self.labels == i])
+            if (len(l) == 0):
+                self.cluster_to_label.append(0)
+            else:
+                self.cluster_to_label.append(max(set(l), key=l.count))
 
 
-    def get_class_cluster_reference(cluster_labels, true_labels):
-        ''' assign a class label to each cluster using majority vote '''
-        label_reference = {}
-        for i in range(len(np.unique(cluster_labels))):
-            index = np.where(cluster_labels == i,1,0)
-            num = np.bincount(true_labels[index==1]).argmax()
-            label_reference[i] = num
+    # def get_class_cluster_reference(self, cluster_labels, true_labels):
+    #     ''' assign a class label to each cluster using majority vote '''
+    #     label_reference = {}
+    #     for i in range(len(np.unique(cluster_labels))):
+    #         index = np.where(cluster_labels == i,1,0)
+    #         num = np.bincount(true_labels[index==1].astype(np.int64)).argmax()
+    #         label_reference[i] = num
 
-        return label_reference
+    #     return label_reference
     
     
-    def align_cluster_labels(self, cluster_labels, reference):
-        ''' update the cluster labels to match the class labels'''
-        aligned_lables = np.zeros_like(cluster_labels)
-        for i in range(len(cluster_labels)):
-            aligned_lables[i] = reference[cluster_labels[i]]
+    # def align_cluster_labels(self, cluster_labels, reference):
+    #     ''' update the cluster labels to match the class labels'''
+    #     aligned_lables = np.zeros_like(cluster_labels)
+    #     for i in range(len(cluster_labels)):
+    #         aligned_lables[i] = reference[cluster_labels[i]]
 
-        return aligned_lables
+    #     return aligned_lables
 
 
 
