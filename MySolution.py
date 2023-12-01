@@ -23,15 +23,15 @@ class MyClassifier:
         data=data.copy()
         class_type = set(data['trainY'])
         class_type = np.array(list(class_type), dtype=np.int)
-        data['testX']=data['testX'][:int(data['testX'].shape[0]*percentage),:]
-        data['testY']=data['testY'][:int(data['testY'].shape[0]*percentage)]
+        # data['testX']=data['testX'][:int(data['testX'].shape[0]*percentage),:]
+        # data['testY']=data['testY'][:int(data['testY'].shape[0]*percentage)]
         data['trainX']=data['trainX'][:int(data['trainX'].shape[0]*percentage),:]
         data['trainY']=data['trainY'][:int(data['trainY'].shape[0]*percentage)]
         trainY = []
         trainX = []
 
-        self.testX = data['testX']
-        self.testY = data['testY']
+        # self.testX = data['testX']
+        # self.testY = data['testY']
         count = 0
         for i in class_type:
             trainY.append(np.where(data['trainY'] == i)[0])
@@ -137,7 +137,7 @@ def solve_l1_Ax_b(A, b):
     b_ub = np.concatenate((np.zeros(n), b, -b))
     b_eq = 1
     integrality = np.concatenate((np.ones(n), np.zeros(m)))
-    sol = linprog(c=c, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, integrality=integrality)
+    sol = linprog(c=c, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, integrality=integrality,method='highs')
     return sol["x"][: n]
 
 
@@ -168,7 +168,7 @@ def solve_l1_l1_Ax_b(A, b, beta=0.5):
         [np.identity(n), np.zeros((n, m)), -np.identity(n)]
     ])
     b_ub = np.concatenate((b, -b, np.zeros(n), np.zeros(n)))
-    sol = linprog(c=c, A_ub=A_ub, b_ub=b_ub)
+    sol = linprog(c=c, A_ub=A_ub, b_ub=b_ub,method='highs')
     return sol['x'][: n]
 
 
@@ -186,7 +186,7 @@ def solve_l1_linf_Ax_b(A, b, beta=0.1):
         [np.identity(n), np.zeros((n, m)), -np.ones((n, 1))]
     ])
     b_ub = np.concatenate((b, -b, np.zeros(n), np.zeros(n)))
-    sol = linprog(c=c, A_ub=A_ub, b_ub=b_ub)
+    sol = linprog(c=c, A_ub=A_ub, b_ub=b_ub,method='highs')
     return sol['x'][: n]
 
 def solve_l1_Ax_b(A, b):
@@ -201,7 +201,7 @@ def solve_l1_Ax_b(A, b):
         [-A, -np.identity(m)]
     ])
     b_ub = np.concatenate((b, -b))
-    sol = linprog(c=c, A_ub=A_ub, b_ub=b_ub)
+    sol = linprog(c=c, A_ub=A_ub, b_ub=b_ub,method='highs')
     return sol['x'][: n]
 
 
@@ -235,7 +235,7 @@ class MyClustering:
             for i in range(A.shape[1]):
                 H[:, i] = solve_l2_Ax_b_dist(W, A[:, i])
             for i in range(A.shape[0]):
-                W[i, :] = solve_l1_linf_Ax_b(H.T, A[i, :])
+                W[i, :] = nnls(H.T, A[i, :])[0]
             self.loss = np.sum(np.abs(A-W@H)) / (A.shape[0]*A.shape[1])
             if verbose:
                 print('loss: ', self.loss)
@@ -344,37 +344,88 @@ def min_l1_Ax_relaxed(A):
     return sol['x']
 
 class MyLabelSelection:
-    def __init__(self, ratio):
+    def __init__(self, ratio,theta=0.1):
         self.ratio = ratio  # percentage of data to label
         ### TODO: Initialize other parameters needed in your algorithm
         self.W = None
+        self.trainX=None
+        self.K=3
+        self.centroids=None
+        self.theta=theta
+        self.selected_indices=[]
 
     def select(self, trainX):
-        copy=trainX.copy()
-        A = copy.T
-        A /= np.linalg.norm(A, axis=0)
-        m, n = A.shape
-        W = np.zeros((1, m))
-        labels = list(range(n))
-        mean_sample = np.mean(trainX, axis=0)
-        distances = np.linalg.norm(trainX - mean_sample, axis=1)
-        #sel = np.argmax(distances)
-        sel = np.random.randint(n)
-        selected = set()
-        selected.add(sel)
-        W[0, :] = A[:, sel]
-        labels.pop(sel)
-        A = np.delete(A, sel, axis=1)
-
-        for i in range(int(n*self.ratio)-1):
-            sel = min_l1_Ax_relaxed(W@A).argmax()
-            selected.add(labels[sel])
-            W = np.vstack((W, A[:, sel]))
-            A = np.delete(A, sel, axis=1)
-            labels.pop(sel)
+        self.trainX=trainX
+        centroids = np.zeros((self.K, self.trainX.shape[1]))
+        centroids[:, :] = trainX[:self.K, :]
+        self.centroids=centroids
+        self.find_centroids()
+        choice = np.argmin(self.calculate_dist_matrix(trainX, self.centroids), axis=1)
+        dist_matrix=self.calculate_dist_matrix(trainX, self.centroids)
+        for i in range(self.K):
+            index_this_cluster= np.where(choice == i)[0]
+            dist_matrix_this_cluster=dist_matrix[index_this_cluster,:]
+            dist_matrix_object=np.sum(dist_matrix_this_cluster,axis=1)-2*(self.theta+1)*dist_matrix_this_cluster[:,i]
+            index_temp=np.argsort(dist_matrix_object)[:int(self.ratio * len(index_this_cluster))]
+            self.selected_indices+=index_this_cluster[index_temp].tolist()
+        return self.selected_indices
 
 
-        self.W = W
-        # Return an index list that specifies which data points to label
-        return list(selected)
+
+    def calculate_dist_matrix(self,data, centers):
+        dist_matrix = np.zeros((data.shape[0], centers.shape[0]))
+        for i in range(centers.shape[0]):
+            dist_matrix[:, i] = np.sqrt(np.sum(np.power(data - centers[i, :], 2), axis=1))
+        return dist_matrix
+    def find_centroids(self):
+        trainX=self.trainX
+        for epoch in range(10):
+            dist_matrix = self.calculate_dist_matrix(trainX, self.centroids)
+            index_temp = np.argmin(dist_matrix, axis=1)
+            for i in range(self.K):
+                temp = trainX
+                # update the centroids
+                self.centroids[i, :] = np.mean(temp[np.where(index_temp == i)[0], :], axis=0)
+
+
+
+
+    # def select(self, trainX):
+    #     copy=trainX.copy()
+    #     A = copy.T
+    #     A /= np.linalg.norm(A, axis=0)
+    #     m, n = A.shape
+    #     W = np.zeros((1, m))
+    #     labels = list(range(n))
+    #     mean_sample = np.mean(trainX, axis=0)
+    #     distances = np.linalg.norm(trainX - mean_sample, axis=1)
+    #     sel = np.argmax(distances)
+    #     #sel = np.random.randint(n)
+    #     selected = set()
+    #     selected.add(sel)
+    #     W[0, :] = A[:, sel]
+    #     labels.pop(sel)
+    #     A = np.delete(A, sel, axis=1)
+    #
+    #     for i in range(int(n*self.ratio)-1):
+    #         sel = min_l1_Ax_relaxed(W@A).argmax()
+    #         selected.add(labels[sel])
+    #         W = np.vstack((W, A[:, sel]))
+    #         A = np.delete(A, sel, axis=1)
+    #         labels.pop(sel)
+    #
+    #
+    #     self.W = W
+    #     # Return an index list that specifies which data points to label
+    #     return list(selected)
+class Random_selector:
+    def __init__(self, ratio):
+        self.ratio = ratio
+
+    def select(self, trainX):
+        total_samples = len(trainX)
+        sample_size = int(self.ratio * total_samples)
+        selected_indices = np.random.choice(total_samples, size=sample_size, replace=False)
+
+        return selected_indices
 
