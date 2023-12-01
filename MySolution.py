@@ -74,7 +74,7 @@ class MyClassifier:
         b[len(class_1):len(class_1) + len(class_2)] = 1 - epsilon
 
         c[0, (class_1.shape[1] + 1):] = np.ones((1, len(class_1) + len(class_2)))
-        res = linprog(c=c, A_ub=A, b_ub=b)
+        res = linprog(c=c, A_ub=A, b_ub=b,method='interior-point')
         a_res = res.x[:class_1.shape[1]]
         b_res = res.x[class_1.shape[1]]
         if np.mean(class_1 @ a_res + b_res) < np.mean(class_2 @ a_res + b_res):
